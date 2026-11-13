@@ -2,7 +2,8 @@
 // Dinheiro: sempre Int em centavos. Datas: timestamptz (UTC); regras de calendário em America/Manaus.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

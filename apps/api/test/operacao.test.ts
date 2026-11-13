@@ -3,6 +3,8 @@
  * pré-registro de indicação, login do participante e idempotência de devoluções.
  */
 import ExcelJS from 'exceljs';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { gerarCpfValido } from '@cdc/shared';
 import { ProvedorConsole } from '../src/notificacoes/provedores';
@@ -130,6 +132,17 @@ describe('importação e devoluções', () => {
     expect(lote.estado).toBe('ESTORNADO');
   });
 
+  it('o arquivo de exemplo da documentação importa sem erros', async () => {
+    const exemplo = readFileSync(join(__dirname, '../../../docs/exemplos/vendas-exemplo.csv'));
+    const r = await amb
+      .http()
+      .post('/importacoes')
+      .set(admin())
+      .attach('arquivo', exemplo, 'vendas-exemplo.csv');
+    expect(r.body).toMatchObject({ status: 'CONCLUIDA', linhasErro: 0, linhasOk: 4 });
+    expect(r.body.resumo).toMatchObject({ vendasNovas: 2, devolucoes: 1 });
+  });
+
   it('linhas inválidas são reportadas sem bloquear o restante do arquivo', async () => {
     const csv = [
       'tipo_movimento;loja;documento;data;comprador_documento;item;sku;valor_bruto;desconto',
@@ -239,16 +252,12 @@ describe('caixa', () => {
     const v = await amb.prisma.venda.findFirstOrThrow({ where: { documentoErp: '9200' } });
     expect([v.origemIndicacao, v.recompensaCentavos]).toEqual(['PRE_REGISTRO', 900]);
 
-    const sem = await amb
-      .http()
-      .post('/reservas')
-      .set(admin())
-      .send({
-        carteiraId: carteira.id,
-        valorCompraCentavos: 10_000,
-        valorCentavos: 1_000,
-        lojaId: 'LOJA-02',
-      });
+    const sem = await amb.http().post('/reservas').set(admin()).send({
+      carteiraId: carteira.id,
+      valorCompraCentavos: 10_000,
+      valorCentavos: 1_000,
+      lojaId: 'LOJA-02',
+    });
     expect(sem.body.erro).toBe('AUTENTICACAO_TITULAR');
     await amb.http().post('/caixa/otp').set(admin()).send({ carteiraId: carteira.id });
     const com = await amb
@@ -282,28 +291,20 @@ describe('caixa', () => {
       .post(`/carteiras/${cliente.id}/ajustes`)
       .set(admin())
       .send({ valorCentavos: 3_000, motivo: 'crédito para teste de contingência' });
-    const bloqueada = await amb
-      .http()
-      .post('/reservas')
-      .set(admin())
-      .send({
-        carteiraId: cliente.id,
-        valorCompraCentavos: 10_000,
-        valorCentavos: 1_000,
-        lojaId: 'LOJA-02',
-      });
+    const bloqueada = await amb.http().post('/reservas').set(admin()).send({
+      carteiraId: cliente.id,
+      valorCompraCentavos: 10_000,
+      valorCentavos: 1_000,
+      lojaId: 'LOJA-02',
+    });
     expect(bloqueada.status).toBe(423);
-    const liberada = await amb
-      .http()
-      .post('/reservas')
-      .set(admin())
-      .send({
-        carteiraId: cliente.id,
-        valorCompraCentavos: 10_000,
-        valorCentavos: 1_000,
-        lojaId: 'LOJA-02',
-        liberacaoSupervisor: 'conferido no ERP manualmente pelo gerente',
-      });
+    const liberada = await amb.http().post('/reservas').set(admin()).send({
+      carteiraId: cliente.id,
+      valorCompraCentavos: 10_000,
+      valorCentavos: 1_000,
+      lojaId: 'LOJA-02',
+      liberacaoSupervisor: 'conferido no ERP manualmente pelo gerente',
+    });
     expect(liberada.status).toBe(201);
     await amb
       .http()

@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/.env
+**/test-results
+**/playwright-report
+.git
+backups
+infra/nginx/certs

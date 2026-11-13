@@ -18,9 +18,11 @@ import { RegrasController } from './regras/regras.controller';
 import { AdminController } from './relatorios/admin.controller';
 import { RelatoriosService } from './relatorios/relatorios.service';
 import { AlertasService } from './vendas/alertas.service';
+import { SaudeController } from './saude.controller';
 import { ProcessamentoVendasService } from './vendas/processamento.service';
 
 export const CONTROLLERS: Type[] = [
+  SaudeController,
   AuthController,
   CarteirasController,
   CaixaController,

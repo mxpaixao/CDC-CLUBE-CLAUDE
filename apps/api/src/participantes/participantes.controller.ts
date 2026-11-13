@@ -70,10 +70,23 @@ export class ParticipantesController {
 
   @Publico()
   @Post('participantes/adesao')
-  async aderir(@Body(validar(adesao)) c: z.infer<typeof adesao>, @AtorAtual() ator: Ator, @Res({ passthrough: true }) res: Response) {
-    const r = await this.participantes.aderir({ ...c, canalAdesao: 'APP' }, { ...ator, tipo: 'PARTICIPANTE' });
+  async aderir(
+    @Body(validar(adesao)) c: z.infer<typeof adesao>,
+    @AtorAtual() ator: Ator,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const r = await this.participantes.aderir(
+      { ...c, canalAdesao: 'APP' },
+      { ...ator, tipo: 'PARTICIPANTE' },
+    );
     // a adesão já abre a sessão do participante
-    res.cookie(COOKIE_APP, r.token, { httpOnly: true, sameSite: 'strict', secure: config.cookieSeguro, maxAge: 30 * 86_400_000, path: '/' });
+    res.cookie(COOKIE_APP, r.token, {
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: config.cookieSeguro,
+      maxAge: 30 * 86_400_000,
+      path: '/',
+    });
     return r;
   }
 

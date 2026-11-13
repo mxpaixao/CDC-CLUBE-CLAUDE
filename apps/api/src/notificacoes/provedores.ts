@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { appendFileSync } from 'node:fs';
 
 export interface ResultadoEnvio {
   ok: boolean;
@@ -22,6 +23,13 @@ export class ProvedorConsole implements ProvedorMensagem {
     ProvedorConsole.enviadas.push({ destino, texto, em: new Date() });
     if (ProvedorConsole.enviadas.length > 500) ProvedorConsole.enviadas.shift();
     if (process.env.NODE_ENV !== 'test') this.logger.log(`→ ${destino}: ${texto}`);
+    // apenas desenvolvimento/E2E: espelha as mensagens num arquivo (nunca habilitar em produção)
+    if (process.env.NOTIFICADOR_ARQUIVO && process.env.NODE_ENV !== 'production') {
+      appendFileSync(
+        process.env.NOTIFICADOR_ARQUIVO,
+        JSON.stringify({ destino, texto, em: new Date().toISOString() }) + '\n',
+      );
+    }
     return { ok: true, idExterno: `console-${ProvedorConsole.enviadas.length}` };
   }
 

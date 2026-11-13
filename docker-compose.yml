@@ -1,0 +1,109 @@
+# Clube CDC — implantação on-premise no servidor da CDC.
+#   cp .env.producao.exemplo .env   (preencha os segredos)
+#   ./infra/nginx/gerar-certificado.sh   (ou copie o certificado da CDC para infra/nginx/certs)
+#   docker compose up -d --build
+name: clube-cdc
+
+x-api-env: &api-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-cdc}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-clube_cdc}?schema=public
+  REDIS_URL: redis://redis:6379
+  JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET (64+ caracteres aleatórios)}
+  NOTIFICADOR: ${NOTIFICADOR:-console}
+  WHATSAPP_API_URL: ${WHATSAPP_API_URL:-}
+  WHATSAPP_API_TOKEN: ${WHATSAPP_API_TOKEN:-}
+  URL_PUBLICA: ${URL_PUBLICA:-https://clube.cdc.local}
+  COOKIE_SECURE: 'true'
+  PASTA_IMPORTACAO: /app/importacoes
+  PASTA_UPLOADS: /app/uploads
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  TZ: America/Manaus
+
+services:
+  postgres:
+    image: postgres:16.10-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cdc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-clube_cdc}
+      TZ: America/Manaus
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-cdc} -d ${POSTGRES_DB:-clube_cdc}']
+      interval: 10s
+      retries: 10
+
+  redis:
+    image: redis:7.4.6-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    image: clube-cdc-api:local
+    restart: unless-stopped
+    environment: *api-env
+    volumes:
+      - ./dados/importacoes:/app/importacoes
+      - ./dados/uploads:/app/uploads
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    image: clube-cdc-api:local
+    restart: unless-stopped
+    command: ['node', 'dist/src/worker.js']
+    environment: *api-env
+    volumes:
+      - ./dados/importacoes:/app/importacoes
+    depends_on:
+      api: { condition: service_healthy }
+
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    image: clube-cdc-web:local
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:3001
+    depends_on:
+      api: { condition: service_healthy }
+
+  nginx:
+    image: nginx:1.28.0-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/certs:/etc/nginx/certs:ro
+    depends_on: [api, web]
+
+  backup:
+    image: postgres:16.10-bookworm
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-cdc}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-clube_cdc}
+      BACKUP_RETENCAO_DIAS: ${BACKUP_RETENCAO_DIAS:-30}
+      BACKUP_HORA: ${BACKUP_HORA:-02:30}
+      TZ: America/Manaus
+    volumes:
+      - ./infra/backup/backup.sh:/backup.sh:ro
+      - ${BACKUP_PASTA:-./backups}:/backups
+    entrypoint: ['bash', '/backup.sh', 'agendar']
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  redisdata:

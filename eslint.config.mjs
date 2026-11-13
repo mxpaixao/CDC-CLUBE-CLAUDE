@@ -22,13 +22,18 @@ export default tseslint.config(
   {
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
     rules: {
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-restricted-syntax': [
         'error',
         {
-          selector: "CallExpression[callee.object.name='Math'][callee.property.name='round'][arguments.0.type='BinaryExpression'][arguments.0.operator='*']",
-          message: 'Dinheiro: use os utilitários de @cdc/shared (centavos inteiros, floor documentado).',
+          selector:
+            "CallExpression[callee.object.name='Math'][callee.property.name='round'][arguments.0.type='BinaryExpression'][arguments.0.operator='*']",
+          message:
+            'Dinheiro: use os utilitários de @cdc/shared (centavos inteiros, floor documentado).',
         },
       ],
     },

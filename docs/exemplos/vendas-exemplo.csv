@@ -1,0 +1,5 @@
+tipo_movimento;loja;documento;documento_origem;data;comprador_documento;codigo_indicacao;tabela_preco;item;sku;familia;tipo_item;quantidade;valor_bruto;desconto;frete;pago_cashback;codigo_resgate
+VENDA;01;500100;;10/03/2026 14:35;52998224725;;;1;COR-A32;CORREIAS;MERCADORIA;2;180,00;0;15,00;;
+VENDA;01;500100;;10/03/2026 14:35;52998224725;;;2;MONT-01;SERVICOS;SERVICO;1;40,00;0;15,00;;
+VENDA;02;500101;;10/03/2026 15:10;11144477735;;;1;CAB-10;ELETRICA;MERCADORIA;100;350,00;20,00;;;
+DEVOLUCAO;01;DV-900;500100;12/03/2026 09:00;;;;1;COR-A32;;;1;90,00;;;;

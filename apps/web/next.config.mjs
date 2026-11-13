@@ -1,14 +1,16 @@
 /** @type {import('next').NextConfig} */
-const API_URL = process.env.API_URL ?? 'http://localhost:3001';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   reactStrictMode: true,
-  // Em produção o nginx encaminha /api → serviço "api". Em desenvolvimento, o Next faz o proxy.
-  async rewrites() {
-    return [{ source: '/api/:path*', destination: `${API_URL}/:path*` }];
-  },
+  // monorepo: o build standalone precisa enxergar os pacotes do workspace
+  outputFileTracingRoot: raiz,
+  transpilePackages: ['@cdc/shared'],
   async headers() {
     return [
       {

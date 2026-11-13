@@ -12,3 +12,8 @@ apps/api/importacoes
 backups
 .turbo
 *.tsbuildinfo
+dados
+infra/nginx/certs/*
+!infra/nginx/certs/.gitkeep
+e2e/test-results
+e2e/playwright-report
