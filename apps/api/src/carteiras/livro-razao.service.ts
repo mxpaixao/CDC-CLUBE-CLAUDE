@@ -324,7 +324,7 @@ export class LivroRazaoService {
           v += restante;
         }
         await this.quitarSaldoDevedor(tx, carteiraId, agora);
-        return { n, v, carteira };
+        return { n, v, carteira, validade: params.validadeDias };
       });
       liberados += r.n;
       valor += r.v;
@@ -332,7 +332,7 @@ export class LivroRazaoService {
         await this.notificarTitular(
           r.carteira,
           r.carteira.tipo === 'PRESTADOR' ? 'PRESTADOR_RECOMPENSA_LIBERADA' : 'CREDITO_LIBERADO',
-          { valor: r.v },
+          { valor: r.v, validade: r.validade },
           `liberacao:${carteiraId}:${agora.toISOString().slice(0, 10)}`,
         );
     }

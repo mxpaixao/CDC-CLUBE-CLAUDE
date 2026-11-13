@@ -16,7 +16,6 @@ export type CodigoTemplate =
   | 'PRESTADOR_RECOMPENSA_LIBERADA'
   | 'PRESTADOR_APROVADO';
 
-
 export function renderizar(corpo: string, dados: Record<string, unknown>): string {
   return corpo.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, chave: string) => String(dados[chave] ?? ''));
 }

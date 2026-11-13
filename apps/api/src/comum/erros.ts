@@ -52,21 +52,17 @@ export class FiltroErros implements ExceptionFilter {
         typeof r === 'string'
           ? r
           : ((r as { message?: string | string[] }).message ?? erro.message);
-      return res
-        .status(status)
-        .json({
-          erro: HttpStatus[status] ?? 'ERRO',
-          mensagem: Array.isArray(mensagem) ? mensagem.join('; ') : mensagem,
-        });
+      return res.status(status).json({
+        erro: HttpStatus[status] ?? 'ERRO',
+        mensagem: Array.isArray(mensagem) ? mensagem.join('; ') : mensagem,
+      });
     }
     if (erro instanceof Prisma.PrismaClientKnownRequestError && erro.code === 'P2002') {
-      return res
-        .status(409)
-        .json({
-          erro: 'CONFLITO',
-          mensagem: 'registro duplicado',
-          dados: { alvo: erro.meta?.target },
-        });
+      return res.status(409).json({
+        erro: 'CONFLITO',
+        mensagem: 'registro duplicado',
+        dados: { alvo: erro.meta?.target },
+      });
     }
     this.logger.error(erro instanceof Error ? erro.stack : String(erro));
     return res
