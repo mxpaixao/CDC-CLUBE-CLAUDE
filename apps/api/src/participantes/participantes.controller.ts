@@ -1,4 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { COOKIE_APP } from '../auth/acesso.guard';
+import { config } from '../comum/config';
 import { ApiTags } from '@nestjs/swagger';
 import { TIPOS_CONSENTIMENTO } from '@cdc/shared';
 import { z } from 'zod';
@@ -67,11 +70,11 @@ export class ParticipantesController {
 
   @Publico()
   @Post('participantes/adesao')
-  aderir(@Body(validar(adesao)) c: z.infer<typeof adesao>, @AtorAtual() ator: Ator) {
-    return this.participantes.aderir(
-      { ...c, canalAdesao: 'APP' },
-      { ...ator, tipo: 'PARTICIPANTE' },
-    );
+  async aderir(@Body(validar(adesao)) c: z.infer<typeof adesao>, @AtorAtual() ator: Ator, @Res({ passthrough: true }) res: Response) {
+    const r = await this.participantes.aderir({ ...c, canalAdesao: 'APP' }, { ...ator, tipo: 'PARTICIPANTE' });
+    // a adesão já abre a sessão do participante
+    res.cookie(COOKIE_APP, r.token, { httpOnly: true, sameSite: 'strict', secure: config.cookieSeguro, maxAge: 30 * 86_400_000, path: '/' });
+    return r;
   }
 
   // ── equipe

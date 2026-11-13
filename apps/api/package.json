@@ -6,16 +6,16 @@
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node dist/src/main.js",
     "start:worker": "node dist/src/worker.js",
-    "dev": "tsx watch src/main.ts",
-    "dev:worker": "tsx watch src/worker.ts",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput & node --watch dist/src/main.js",
+    "dev:worker": "node --watch dist/src/worker.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:dev": "prisma migrate dev",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "node dist/prisma/seed.js"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "node dist/prisma/seed.js"
   },
   "dependencies": {
     "@cdc/rules": "workspace:*",
