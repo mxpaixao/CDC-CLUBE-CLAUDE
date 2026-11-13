@@ -1,0 +1,841 @@
+// Clube CDC — modelo de dados da Fase 1.
+// Dinheiro: sempre Int em centavos. Datas: timestamptz (UTC); regras de calendário em America/Manaus.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Enums
+
+enum TipoParticipante {
+  CPF
+  EMPRESA
+}
+
+enum StatusParticipante {
+  ATIVO
+  INATIVO
+  EXCLUIDO
+}
+
+enum StatusPrestador {
+  PENDENTE
+  APROVADO
+  RECUSADO
+  SUSPENSO
+}
+
+enum NivelPrestador {
+  BRONZE
+  PRATA
+  OURO
+}
+
+enum TipoCarteira {
+  CLIENTE
+  PRESTADOR
+}
+
+enum TipoLancamento {
+  CREDITO
+  DEBITO
+  ESTORNO
+  AJUSTE
+  VENCIMENTO
+}
+
+enum OrigemLancamento {
+  COMPRA
+  BOAS_VINDAS
+  INDICACAO
+  CAMPANHA
+  AJUSTE_MANUAL
+  ESTORNO
+  VENCIMENTO
+  RESGATE
+  QUITACAO_SALDO_DEVEDOR
+  DEVOLUCAO_CASHBACK_UTILIZADO
+}
+
+enum EstadoLancamento {
+  PENDENTE
+  DISPONIVEL
+  RESGATADO
+  VENCIDO
+  ESTORNADO
+  EFETIVADO
+}
+
+enum StatusReserva {
+  ATIVA
+  CONFIRMADA
+  CANCELADA
+  EXPIRADA
+}
+
+enum PerfilComercial {
+  CLIENTE_CPF
+  CLIENTE_EMPRESA
+  PRESTADOR
+}
+
+enum TipoItem {
+  MERCADORIA
+  SERVICO
+  FRETE
+}
+
+enum StatusVenda {
+  CONFIRMADA
+  CANCELADA
+}
+
+enum TipoDevolucao {
+  DEVOLUCAO
+  CANCELAMENTO
+}
+
+enum EscopoRegra {
+  PROGRAMA
+  PERFIL
+  LOJA_CANAL
+  CAMPANHA
+  FAMILIA
+  SUBFAMILIA
+  PRODUTO
+  MATRIZ
+  PISO_MARGEM
+  NIVEL_PRESTADOR
+}
+
+enum StatusDivergencia {
+  ABERTA
+  RESOLVIDA
+  IGNORADA
+}
+
+enum StatusAlerta {
+  ABERTO
+  ANALISADO
+  DESCARTADO
+}
+
+enum StatusImportacao {
+  PROCESSANDO
+  CONCLUIDA
+  CONCLUIDA_COM_ERROS
+  FALHOU
+}
+
+enum StatusNotificacao {
+  PENDENTE
+  ENVIADA
+  FALHOU
+  CANCELADA
+  BLOQUEADA_CONSENTIMENTO
+}
+
+enum CanalNotificacao {
+  WHATSAPP
+  SMS
+  PUSH
+  EMAIL
+  CONSOLE
+}
+
+// ───────────────────────────── Cadastro
+
+/// Pessoa é única pelo CPF.
+model Pessoa {
+  id             String    @id @default(uuid())
+  cpf            String    @unique
+  nome           String
+  telefone       String?
+  email          String?
+  dataNascimento DateTime? @db.Date
+  anonimizadaEm  DateTime?
+  criadoEm       DateTime  @default(now())
+  atualizadoEm   DateTime  @updatedAt
+
+  participante   Participante?
+  prestador      Prestador?
+  empresas       EmpresaComprador[]
+  consentimentos Consentimento[]
+  carteiras      Carteira[]
+  otps           Otp[]
+
+  @@index([telefone])
+  @@map("pessoa")
+}
+
+model Empresa {
+  id           String   @id @default(uuid())
+  cnpj         String   @unique
+  razaoSocial  String
+  nomeFantasia String?
+  telefone     String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  compradores  EmpresaComprador[]
+  participante Participante?
+  carteiras    Carteira[]
+
+  @@map("empresa")
+}
+
+model EmpresaComprador {
+  id        String   @id @default(uuid())
+  empresaId String
+  pessoaId  String
+  /// RESPONSAVEL | COMPRADOR
+  papel     String
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  pessoa  Pessoa  @relation(fields: [pessoaId], references: [id])
+
+  @@unique([empresaId, pessoaId])
+  @@map("empresa_comprador")
+}
+
+model Participante {
+  id                    String             @id @default(uuid())
+  tipo                  TipoParticipante
+  pessoaId              String?            @unique
+  empresaId             String?            @unique
+  status                StatusParticipante @default(ATIVO)
+  dataAdesao            DateTime
+  /// venda que consumiu o benefício de boas-vindas (D-016)
+  boasVindasVendaId     String?
+  ultimaCompraEm        DateTime?
+  canalAdesao           String             @default("APP")
+  excluidoEm            DateTime?
+  criadoEm              DateTime           @default(now())
+  atualizadoEm          DateTime           @updatedAt
+
+  pessoa  Pessoa?  @relation(fields: [pessoaId], references: [id])
+  empresa Empresa? @relation(fields: [empresaId], references: [id])
+
+  @@map("participante")
+}
+
+/// Histórico append-only de consentimentos (LGPD). O vigente é o mais recente por tipo.
+model Consentimento {
+  id          String   @id @default(uuid())
+  pessoaId    String
+  /// ADESAO_PROGRAMA | MARKETING_WHATSAPP | MARKETING_SMS | MARKETING_EMAIL | MARKETING_PUSH | PERFIL_PUBLICO
+  tipo        String
+  concedido   Boolean
+  versaoTermo String
+  origem      String
+  ip          String?
+  criadoEm    DateTime @default(now())
+
+  pessoa Pessoa @relation(fields: [pessoaId], references: [id])
+
+  @@index([pessoaId, tipo, criadoEm])
+  @@map("consentimento")
+}
+
+model Especialidade {
+  id    String  @id
+  nome  String
+  ativa Boolean @default(true)
+
+  @@map("especialidade")
+}
+
+model Prestador {
+  id                    String          @id @default(uuid())
+  pessoaId              String          @unique
+  cnpj                  String?
+  razaoSocial           String?
+  status                StatusPrestador @default(PENDENTE)
+  nivel                 NivelPrestador  @default(BRONZE)
+  nivelDefinidoManual   Boolean         @default(false)
+  codigo                String?         @unique
+  especialidades        String[]
+  bairros               String[]
+  whatsapp              String?
+  fotos                 String[]
+  documentos            String[]
+  termosAceitosEm       DateTime?
+  codigoCondutaAceitoEm DateTime?
+  aprovadoPorId         String?
+  aprovadoEm            DateTime?
+  motivoStatus          String?
+  // Fase 3 — CDC Indica (preparado, não exposto)
+  perfilPublico         Boolean         @default(false)
+  descricaoPublica      String?
+  seloRecomendado       Boolean         @default(false)
+  criadoEm              DateTime        @default(now())
+  atualizadoEm          DateTime        @updatedAt
+
+  pessoa      Pessoa              @relation(fields: [pessoaId], references: [id])
+  vinculos    VinculoIndicacao[]
+  vendas      Venda[]
+  avaliacoes  Avaliacao[]
+
+  @@index([cnpj])
+  @@index([status])
+  @@map("prestador")
+}
+
+/// Fase 3 (CDC Indica): avaliação verificada, presa a uma venda indicada.
+model Avaliacao {
+  id          String   @id @default(uuid())
+  prestadorId String
+  vendaId     String   @unique
+  nota        Int
+  comentario  String?
+  publicada   Boolean  @default(false)
+  criadoEm    DateTime @default(now())
+
+  prestador Prestador @relation(fields: [prestadorId], references: [id])
+  venda     Venda     @relation(fields: [vendaId], references: [id])
+
+  @@map("avaliacao")
+}
+
+// ───────────────────────────── Carteira e livro-razão
+
+/// Uma carteira por titular e tipo. titularChave = "P:<pessoaId>" ou "E:<empresaId>".
+model Carteira {
+  id           String       @id @default(uuid())
+  tipo         TipoCarteira
+  titularChave String
+  pessoaId     String?
+  empresaId    String?
+  criadoEm     DateTime     @default(now())
+
+  pessoa      Pessoa?      @relation(fields: [pessoaId], references: [id])
+  empresa     Empresa?     @relation(fields: [empresaId], references: [id])
+  lancamentos Lancamento[]
+  reservas    Reserva[]
+
+  @@unique([titularChave, tipo])
+  @@map("carteira")
+}
+
+/// Livro-razão imutável (trigger no banco). Lotes de crédito têm loteId = id.
+model Lancamento {
+  id                String           @id @default(uuid())
+  seq               Int              @unique @default(autoincrement())
+  carteiraId        String
+  tipo              TipoLancamento
+  origem            OrigemLancamento
+  /// com sinal: crédito > 0, débito < 0
+  valorCentavos     Int
+  estado            EstadoLancamento
+  loteId            String?
+  liberaEm          DateTime?
+  liberadoEm        DateTime?
+  venceEm           DateTime?
+  vendaId           String?
+  devolucaoId       String?
+  reservaId         String?
+  regraVersaoId     String?
+  chaveIdempotencia String           @unique
+  criadoPor         String
+  motivo            String?
+  detalhes          Json?
+  criadoEm          DateTime         @default(now())
+
+  carteira    Carteira     @relation(fields: [carteiraId], references: [id])
+  venda       Venda?       @relation(fields: [vendaId], references: [id])
+  regraVersao RegraVersao? @relation(fields: [regraVersaoId], references: [id])
+
+  @@index([carteiraId, loteId])
+  @@index([estado, liberaEm])
+  @@index([estado, venceEm])
+  @@index([vendaId])
+  @@map("lancamento")
+}
+
+model Reserva {
+  id                  String        @id @default(uuid())
+  carteiraId          String
+  valorCentavos       Int
+  valorCompraCentavos Int
+  codigo              String        @unique
+  status              StatusReserva @default(ATIVA)
+  expiraEm            DateTime
+  lojaId              String
+  operadorId          String
+  vendaErpRef         String?
+  vendaId             String?
+  chaveIdempotencia   String        @unique
+  autenticacaoTitular String?
+  confirmadaEm        DateTime?
+  canceladaEm         DateTime?
+  motivoCancelamento  String?
+  conciliadaEm        DateTime?
+  criadoEm            DateTime      @default(now())
+
+  carteira  Carteira          @relation(fields: [carteiraId], references: [id])
+  alocacoes ReservaAlocacao[]
+
+  @@index([carteiraId, status])
+  @@index([status, expiraEm])
+  @@map("reserva")
+}
+
+model ReservaAlocacao {
+  id            String @id @default(uuid())
+  reservaId     String
+  loteId        String
+  valorCentavos Int
+
+  reserva Reserva @relation(fields: [reservaId], references: [id])
+
+  @@index([loteId])
+  @@map("reserva_alocacao")
+}
+
+// ───────────────────────────── Vendas
+
+model Loja {
+  id       String  @id
+  nome     String
+  cidade   String  @default("Manaus")
+  ativa    Boolean @default(true)
+  codigoErp String @unique
+
+  @@map("loja")
+}
+
+model Familia {
+  codigo String @id
+  nome   String
+
+  subfamilias Subfamilia[]
+
+  @@map("familia")
+}
+
+model Subfamilia {
+  codigo        String @id
+  nome          String
+  familiaCodigo String
+
+  familia Familia @relation(fields: [familiaCodigo], references: [codigo])
+
+  @@map("subfamilia")
+}
+
+model Produto {
+  sku              String   @id
+  descricao        String
+  familiaCodigo    String?
+  subfamiliaCodigo String?
+  /// referência da tabela meio de campo, importada do ERP (centavos)
+  precoProfissionalCentavos Int?
+  atualizadoEm     DateTime @updatedAt
+
+  @@index([familiaCodigo])
+  @@map("produto")
+}
+
+model Venda {
+  id                       String          @id @default(uuid())
+  lojaId                   String
+  canal                    String
+  documentoErp             String
+  chaveIdempotencia        String          @unique
+  /// CPF ou CNPJ como veio do ERP (normalizado)
+  compradorDocumento       String?
+  compradorPessoaId        String?
+  compradorEmpresaId       String?
+  /// pessoa que efetivamente comprou em nome da empresa (opcional)
+  compradorAutorizadoCpf   String?
+  prestadorIndicadorId     String?
+  codigoIndicacaoInformado String?
+  /// CODIGO_NA_VENDA | VINCULO | PRE_REGISTRO | AJUSTE_MANUAL
+  origemIndicacao          String?
+  vendedorCdc              String?
+  perfilAplicado           PerfilComercial
+  status                   StatusVenda     @default(CONFIRMADA)
+  dataVenda                DateTime
+  dataConfirmacao          DateTime
+  tabelaPreco              String?
+  totalBrutoCentavos       Int
+  totalDescontosCentavos   Int
+  freteCentavos            Int             @default(0)
+  servicosCentavos         Int             @default(0)
+  pagoComCashbackCentavos  Int             @default(0)
+  codigoResgate            String?
+  baseCalculoCentavos      Int             @default(0)
+  cashbackCentavos         Int             @default(0)
+  recompensaCalculadaCentavos Int          @default(0)
+  recompensaCentavos       Int             @default(0)
+  recompensaExcedenteCentavos Int          @default(0)
+  regraVersaoId            String?
+  calculo                  Json?
+  importacaoId             String?
+  /// AGUARDANDO_CONFIRMACAO quando a venda chega em contingência
+  situacaoCredito          String          @default("PROCESSADA")
+  criadoEm                 DateTime        @default(now())
+  atualizadoEm             DateTime        @updatedAt
+
+  itens       VendaItem[]
+  pagamentos  VendaPagamento[]
+  devolucoes  Devolucao[]
+  lancamentos Lancamento[]
+  prestador   Prestador?       @relation(fields: [prestadorIndicadorId], references: [id])
+  avaliacao   Avaliacao?
+
+  @@unique([lojaId, documentoErp])
+  @@index([compradorPessoaId])
+  @@index([compradorEmpresaId])
+  @@index([prestadorIndicadorId, dataConfirmacao])
+  @@index([codigoResgate])
+  @@map("venda")
+}
+
+model VendaItem {
+  id                 String   @id @default(uuid())
+  vendaId            String
+  numeroItem         String
+  sku                String
+  descricao          String?
+  familiaCodigo      String?
+  subfamiliaCodigo   String?
+  tipo               TipoItem
+  quantidade         Decimal  @db.Decimal(14, 3)
+  valorBrutoCentavos Int
+  descontoCentavos   Int
+  valorLiquidoCentavos Int
+  custoCentavos      Int?
+  emPromocao         Boolean  @default(false)
+  descontoNegociado  Boolean  @default(false)
+  tabelaProfissional Boolean  @default(false)
+  chaveIdempotencia  String   @unique
+
+  venda Venda @relation(fields: [vendaId], references: [id])
+
+  @@unique([vendaId, numeroItem])
+  @@map("venda_item")
+}
+
+model VendaPagamento {
+  id            String  @id @default(uuid())
+  vendaId       String
+  forma         String
+  valorCentavos Int
+  codigoResgate String?
+
+  venda Venda @relation(fields: [vendaId], references: [id])
+
+  @@map("venda_pagamento")
+}
+
+model Devolucao {
+  id                String        @id @default(uuid())
+  vendaId           String
+  documentoErp      String
+  tipo              TipoDevolucao
+  data              DateTime
+  chaveIdempotencia String        @unique
+  importacaoId      String?
+  processadaEm      DateTime?
+  resultado         Json?
+  criadoEm          DateTime      @default(now())
+
+  venda Venda           @relation(fields: [vendaId], references: [id])
+  itens DevolucaoItem[]
+
+  @@map("devolucao")
+}
+
+model DevolucaoItem {
+  id                String  @id @default(uuid())
+  devolucaoId       String
+  numeroItem        String
+  quantidade        Decimal @db.Decimal(14, 3)
+  valorCentavos     Int
+  chaveIdempotencia String  @unique
+
+  devolucao Devolucao @relation(fields: [devolucaoId], references: [id])
+
+  @@map("devolucao_item")
+}
+
+model VinculoIndicacao {
+  id           String   @id @default(uuid())
+  /// "P:<pessoaId>" ou "E:<empresaId>"
+  compradorChave String
+  prestadorId  String
+  inicio       DateTime
+  fim          DateTime
+  /// PRIMEIRA_COMPRA | APP
+  origem       String
+  vendaOrigemId String?
+  criadoEm     DateTime @default(now())
+
+  prestador Prestador @relation(fields: [prestadorId], references: [id])
+
+  @@unique([compradorChave, prestadorId, inicio])
+  @@index([compradorChave, fim])
+  @@map("vinculo_indicacao")
+}
+
+/// Código do prestador informado no caixa ANTES do documento chegar via importação.
+model IndicacaoPreRegistro {
+  id           String   @id @default(uuid())
+  lojaId       String
+  documentoErp String
+  prestadorId  String
+  operadorId   String
+  utilizadoEm  DateTime?
+  criadoEm     DateTime @default(now())
+
+  @@unique([lojaId, documentoErp])
+  @@map("indicacao_pre_registro")
+}
+
+// ───────────────────────────── Regras
+
+model Campanha {
+  id        String   @id @default(uuid())
+  nome      String
+  descricao String?
+  criadoEm  DateTime @default(now())
+
+  @@map("campanha")
+}
+
+model Regra {
+  id         String           @id @default(uuid())
+  escopo     EscopoRegra
+  nome       String?
+  perfil     PerfilComercial?
+  lojaId     String?
+  canal      String?
+  familia    String?
+  subfamilia String?
+  sku        String?
+  campanhaId String?
+  /// chave natural do escopo (evita regras duplicadas para o mesmo alvo)
+  chave      String           @unique
+  criadoEm   DateTime         @default(now())
+
+  versoes RegraVersao[]
+
+  @@map("regra")
+}
+
+/// Imutável: editar uma regra cria nova versão.
+model RegraVersao {
+  id             String    @id @default(uuid())
+  regraId        String
+  versao         Int
+  parametros     Json
+  ativa          Boolean   @default(true)
+  vigenciaInicio DateTime
+  vigenciaFim    DateTime?
+  autorId        String
+  motivo         String?
+  criadoEm       DateTime  @default(now())
+
+  regra       Regra        @relation(fields: [regraId], references: [id])
+  lancamentos Lancamento[]
+
+  @@unique([regraId, versao])
+  @@map("regra_versao")
+}
+
+// ───────────────────────────── Equipe, auditoria, operação
+
+model UsuarioCdc {
+  id           String   @id @default(uuid())
+  nome         String
+  email        String   @unique
+  senhaHash    String
+  permissoes   String[]
+  lojaId       String?
+  ativo        Boolean  @default(true)
+  ultimoAcesso DateTime?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@map("usuario_cdc")
+}
+
+/// Catálogo de permissões (documentação viva no banco).
+model Permissao {
+  codigo    String @id
+  descricao String
+
+  @@map("permissao")
+}
+
+model Auditoria {
+  id         String   @id @default(uuid())
+  usuarioId  String?
+  /// STAFF | PARTICIPANTE | SISTEMA
+  ator       String
+  acao       String
+  entidade   String
+  entidadeId String?
+  antes      Json?
+  depois     Json?
+  motivo     String?
+  ip         String?
+  criadoEm   DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+  @@index([acao, criadoEm])
+  @@index([usuarioId, criadoEm])
+  @@map("auditoria")
+}
+
+model Otp {
+  id           String    @id @default(uuid())
+  pessoaId     String?
+  documento    String
+  telefone     String
+  /// LOGIN | RESGATE | CADASTRO
+  finalidade   String
+  codigoHash   String
+  expiraEm     DateTime
+  tentativas   Int       @default(0)
+  utilizadoEm  DateTime?
+  criadoEm     DateTime  @default(now())
+
+  pessoa Pessoa? @relation(fields: [pessoaId], references: [id])
+
+  @@index([documento, finalidade, criadoEm])
+  @@map("otp")
+}
+
+model IdempotenciaRequisicao {
+  chave        String   @id
+  escopo       String
+  hashCorpo    String
+  statusHttp   Int
+  resposta     Json
+  criadoEm     DateTime @default(now())
+
+  @@map("idempotencia_requisicao")
+}
+
+model MapeamentoImportacao {
+  id               String   @id @default(uuid())
+  nome             String   @unique
+  /// { campoInterno: "Nome da coluna no arquivo" }
+  colunas          Json
+  formatoData      String   @default("dd/MM/yyyy")
+  separadorDecimal String   @default("virgula")
+  delimitadorCsv   String   @default(";")
+  padrao           Boolean  @default(false)
+  criadoEm         DateTime @default(now())
+  atualizadoEm     DateTime @updatedAt
+
+  @@map("mapeamento_importacao")
+}
+
+model Importacao {
+  id              String           @id @default(uuid())
+  arquivoNome     String
+  arquivoHash     String
+  origem          String
+  mapeamentoId    String?
+  status          StatusImportacao @default(PROCESSANDO)
+  linhasTotal     Int              @default(0)
+  linhasOk        Int              @default(0)
+  linhasIgnoradas Int              @default(0)
+  linhasErro      Int              @default(0)
+  erros           Json?
+  resumo          Json?
+  usuarioId       String?
+  iniciadaEm      DateTime         @default(now())
+  concluidaEm     DateTime?
+
+  @@index([iniciadaEm])
+  @@map("importacao")
+}
+
+model Divergencia {
+  id            String            @id @default(uuid())
+  tipo          String
+  severidade    String            @default("MEDIA")
+  descricao     String
+  referencia    String
+  /// chave para não abrir a mesma divergência duas vezes
+  chave         String            @unique
+  dados         Json?
+  status        StatusDivergencia @default(ABERTA)
+  responsavelId String?
+  resolucao     String?
+  resolvidaEm   DateTime?
+  criadoEm      DateTime          @default(now())
+  atualizadoEm  DateTime          @updatedAt
+
+  @@index([status, criadoEm])
+  @@map("divergencia")
+}
+
+/// Alertas do painel: antifraude, piso de margem, teto mensal, contingência.
+model Alerta {
+  id           String       @id @default(uuid())
+  tipo         String
+  severidade   String       @default("MEDIA")
+  descricao    String
+  referencia   String?
+  chave        String       @unique
+  dados        Json?
+  status       StatusAlerta @default(ABERTO)
+  analisadoPor String?
+  criadoEm     DateTime     @default(now())
+
+  @@index([tipo, status])
+  @@map("alerta")
+}
+
+model Notificacao {
+  id            String            @id @default(uuid())
+  pessoaId      String?
+  destino       String
+  canal         CanalNotificacao
+  template      String
+  dados         Json
+  status        StatusNotificacao @default(PENDENTE)
+  agendadaPara  DateTime
+  enviadaEm     DateTime?
+  erro          String?
+  tentativas    Int               @default(0)
+  chave         String            @unique
+  /// consentimento de marketing exigido? (transacionais não exigem)
+  marketing     Boolean           @default(false)
+  criadoEm      DateTime          @default(now())
+
+  @@index([status, agendadaPara])
+  @@map("notificacao")
+}
+
+model TemplateNotificacao {
+  codigo       String   @id
+  titulo       String
+  corpo        String
+  marketing    Boolean  @default(false)
+  ativo        Boolean  @default(true)
+  atualizadoEm DateTime @updatedAt
+
+  @@map("template_notificacao")
+}
+
+/// Estado operacional (contingência de integração etc.).
+model EstadoSistema {
+  chave        String   @id
+  valor        Json
+  atualizadoEm DateTime @updatedAt
+
+  @@map("estado_sistema")
+}
